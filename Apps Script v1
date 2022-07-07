@@ -1,0 +1,121 @@
+/*
+ * In the code below, the word "fellow" refers to a person (a student, workshop participant, etc.)
+ * Whenever we refer to "Modules," we're simply referring to the given subfolder we want to send the file to.
+ * When we refer to cohorts, we're referring to groups of people (folks in course sections, etc.)
+ */
+
+var ss = SpreadsheetApp.getActiveSpreadsheet();
+var sheets = ss.getSheets();
+var faxSheet = sheets[0];
+var fellowSheet = sheets[1];
+
+function authorize() {
+  ss.toast("Enter Folder ID and Select Portfolio Fax Machine v2 -> Send Handouts", "", -1);
+}
+
+function onOpen() {
+  var menuEntries = [{
+    name: "1. Authorize",
+    functionName: "authorize"
+  }, {
+    name: "2. Populate Module Folders",
+    functionName: "populateFellowModuleFolders"
+  }, {
+    name: "3. Send Handouts",
+    functionName: "sendHandouts"
+  }];
+
+  ss.addMenu("Portfolio Fax Machine v2", menuEntries);
+  ss.toast("Select Portfolio Fax Machine v2 -> Authorize. This is an One Time Action.", "Get Started", -1);
+}
+
+function populateFellowModuleFolders() {
+  try {
+    var moduleColumn = getModuleColumn();
+    var fellowRows = getFellowRows();
+    fellowRows.forEach(r => getOrMakeFellowModuleFolder(r, moduleColumn))
+  } catch (e) {
+    errorMessage(e)
+  }
+}
+
+function sendHandouts() {
+  var sourceFileId = getCellContent(faxSheet, 5, 2);
+
+  try {
+    var sourceFile = DriveApp.getFileById(sourceFileId);
+    var moduleColumn = getModuleColumn();
+    var fellowRows = getFellowRows();
+    fellowRows.forEach(r => sendFile(sourceFile, r, moduleColumn));
+  } catch (e) {
+    errorMessage(e)
+  }
+}
+
+// The function below says "give me a sheet, row, and column, and I'll give you back the value in that cell."
+function getCellContent(sheet, row, column) {
+  return sheet.getRange(row, column).getValue().toString().trim();
+}
+
+// This function does the opposite to the function above. It says "give me the range on a sheet
+// --for instance everything between C1 and Z1 on Sheet x--
+// and I will give you all the cells in that range with that content in it.
+function getCellsByContent(range, content) {
+  return range.createTextFinder(content).findAll();
+}
+
+// This function exists to corellate the name I've selected from the inputs sheet
+// and return the number of the column that has the same module name in the folders sheet.
+// NOTE: If you add module columns past Z, you must increase the range below to include them!
+function getModuleColumn() {
+  var moduleName = getCellContent(faxSheet, 7, 2);
+  return getCellsByContent(fellowSheet.getRange("D1:Z1"), moduleName)[0].getColumn();
+}
+
+// This function operates similarly to the function "getModuleColumn"-- but it instead returns
+// the row numbers in an array that corellate with the cohort selected on the input sheet.
+function getFellowRows() {
+  var cohortName = getCellContent(faxSheet, 9, 2);
+  return getCellsByContent(fellowSheet.getRange("B2:B"), cohortName).map(c => c.getRow());
+}
+
+// This function finds or creates a folder for the fellow and module provided
+function getOrMakeFellowModuleFolder(fellowRow, moduleColumn) {
+  // If we've stored a folder ID on the fellows sheet, just use that
+  var existingFellowModuleFolderId = getCellContent(fellowSheet, fellowRow, moduleColumn);
+  if (existingFellowModuleFolderId) {
+    return DriveApp.getFolderById(existingFellowModuleFolderId);
+  }
+
+  // If no folder ID is stored, look for a folder matching that name
+  var fellowRootFolderId = getCellContent(fellowSheet, fellowRow, 3);
+  var fellowRootFolder = DriveApp.getFolderById(fellowRootFolderId);
+  var moduleName = getCellContent(fellowSheet, 1, moduleColumn);
+  var matchingFolderIterator = fellowRootFolder.getFoldersByName(moduleName);
+
+  var foundOrCreatedFolder;
+  if (matchingFolderIterator.hasNext()) {
+    // We found a folder matching the module name in the fellow's root folder! Use that.
+    foundOrCreatedFolder = matchingFolderIterator.next();
+  } else {
+    // No matching folder found - create it instead.
+    foundOrCreatedFolder = fellowRootFolder.createFolder(moduleName);
+  }
+
+  // Whether the folder was found or created, save the ID back to the fellow sheet in the module column
+  fellowSheet.getRange(fellowRow, moduleColumn).setValue(foundOrCreatedFolder.getId());
+  return foundOrCreatedFolder;
+}
+
+// This function sends the file that we provided in the input to the fellow with the provided row number
+// in the folder you indicated with the provided column number. It also appends the fellow's name to the copied file name.
+function sendFile(file, fellowRow, moduleColumn) {
+  var fellowName = getCellContent(fellowSheet, fellowRow, 1);
+  var fileName = `${file.getName()} - ${fellowName}`;
+  var fellowModuleFolder = getOrMakeFellowModuleFolder(fellowRow, moduleColumn);
+  file.makeCopy(fileName, fellowModuleFolder);
+}
+
+function errorMessage(e) {
+  Browser.msgBox("Error", `An Error Occured: ${e.toString()}`, Browser.Buttons.OK);
+}
