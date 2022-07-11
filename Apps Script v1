@@ -8,6 +8,7 @@ var ss = SpreadsheetApp.getActiveSpreadsheet();
 var sheets = ss.getSheets();
 var faxSheet = sheets[0];
 var fellowSheet = sheets[1];
+var faxLogSheet = sheets[2];
 
 function authorize() {
   ss.toast("Enter Folder ID and Select Portfolio Fax Machine v2 -> Send Handouts", "", -1);
@@ -26,7 +27,7 @@ function onOpen() {
   }];
 
   ss.addMenu("Portfolio Fax Machine v2", menuEntries);
-  ss.toast("Select Portfolio Fax Machine v2 -> Authorize. This is an One Time Action.", "Get Started", -1);
+  ss.toast("Select Portfolio Fax Machine v2 -> Authorize. This is a one-time action (It'll remember that you've authorized this in the future.).", "Get Started", -1);
 }
 
 function populateFellowModuleFolders() {
@@ -113,8 +114,15 @@ function sendFile(file, fellowRow, moduleColumn) {
   var fellowName = getCellContent(fellowSheet, fellowRow, 1);
   var fileName = `${file.getName()} - ${fellowName}`;
   var fellowModuleFolder = getOrMakeFellowModuleFolder(fellowRow, moduleColumn);
-  file.makeCopy(fileName, fellowModuleFolder);
+
+  var newFile = file.makeCopy(fileName, fellowModuleFolder);
+  var fellowFileHyperlink = `=HYPERLINK("${newFile.getUrl()}", "${fellowName}")`;
+  var pasteableUrlList = `<li><a class="inline_disabled" href="${newFile.getUrl()}" target="_blank" rel="noopener noreferrer">${fellowName}</a></li>`;
+
+  faxLogSheet.appendRow([new Date(), fileName, newFile.getUrl(), fellowName, fellowFileHyperlink, pasteableUrlList]);
 }
+//"Javascript string interpolation" is the search term I'd want to dig into to learn more about what we just did there above in "pasteableUrlList". 
+
 
 function errorMessage(e) {
   Browser.msgBox("Error", `An Error Occured: ${e.toString()}`, Browser.Buttons.OK);
